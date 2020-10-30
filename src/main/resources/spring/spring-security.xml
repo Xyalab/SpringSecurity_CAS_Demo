@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:security="http://www.springframework.org/schema/security"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/security
+        http://www.springframework.org/schema/security/spring-security.xsd">
+
+    <!-- 配置 favicon.ico不进行安全拦截-->
+    <security:http pattern="/favicon.ico" security="none"/>
+
+    <!-- 页面拦截规则 -->
+    <security:http use-expressions="false" entry-point-ref="casAuthenticationEntryPoint">
+        <security:intercept-url pattern="/**" access="ROLE_ADMIN"/>
+        <security:form-login/>
+        <security:logout/>
+        <!--注册 cas认证过滤器-->
+        <security:custom-filter ref="casAuthenticationFilter" position="CAS_FILTER"/>
+        <!--注册 退出登陆销毁session的过滤器-->
+        <security:custom-filter ref="singleSignOutFilter" before="CAS_FILTER"/>
+        <!--注册 退出登陆过滤器-->
+        <security:custom-filter ref="logoutFilter" before="LOGOUT_FILTER"/>
+    </security:http>
+
+    <!--一、创建springSecurity整合cas入口类-->
+    <bean id="casAuthenticationEntryPoint" class="org.springframework.security.cas.web.CasAuthenticationEntryPoint">
+        <!--配置cas server登录地址-->
+        <property name="loginUrl" value="http://192.168.188.128/cas/login"/>
+        <!--配置客户端地址-->
+        <property name="serviceProperties" ref="serviceProperties"/>
+    </bean>
+    <!--创建客户端对象-->
+    <bean id="serviceProperties" class="org.springframework.security.cas.ServiceProperties">
+        <property name="service" value="http://localhost:9003/login/cas"/>
+    </bean>
+
+    <!--二、配置cas认证过滤器，接管springsecurity认证管理器-->
+    <bean id="casAuthenticationFilter" class="org.springframework.security.cas.web.CasAuthenticationFilter">
+        <!--接管springsecurity认证管理器-->
+        <property name="authenticationManager" ref="authenticationManager"/>
+    </bean>
+    <!-- 认证管理器 -->
+    <security:authentication-manager alias="authenticationManager">
+        <security:authentication-provider ref="casAuthenticationProvider">
+<!--            <security:user-service>-->
+<!--                <security:user name="admin" password="0011" authorities="ROLE_ADMIN"/>-->
+<!--                <security:user name="John" password="0011" authorities="ROLE_MANAGER"/>-->
+<!--            </security:user-service>-->
+        </security:authentication-provider>
+    </security:authentication-manager>
+
+    <!--创建cas 和 springsecurity联合处理类-->
+    <bean id="casAuthenticationProvider" class="org.springframework.security.cas.authentication.CasAuthenticationProvider">
+        <!--工作一、票据验证工作  由cas server完成-->
+        <property name="ticketValidator">
+            <!--配置cas server-->
+            <bean class="org.jasig.cas.client.validation.Cas20ServiceTicketValidator">
+                <constructor-arg index="0" value="http://192.168.188.128/cas"/>
+            </bean>
+        </property>
+        <!--工作二、配置springsecurity进行授权-->
+        <property name="authenticationUserDetailsService">
+            <bean class="org.springframework.security.core.userdetails.UserDetailsByNameServiceWrapper">
+                <!--注入用户自己编写的自定义认证类-->
+                <constructor-arg ref="userDetailService"/>
+            </bean>
+        </property>
+        <!--属性3、客户端属性-->
+        <property name="serviceProperties" ref="serviceProperties"/>
+
+        <!--属性4、key的生成方式-->
+        <property name="key" value="a_style"/>   <!--值随意-->
+
+    </bean>
+
+    <!--声明自定义认证类-->
+    <bean id="userDetailService" class="pers.johnx.user.UserDetailServiceImpl"/>
+
+
+    <!--单点登录退出销毁session过滤器-->
+    <bean id="singleSignOutFilter" class="org.jasig.cas.client.session.SingleSignOutFilter"/>
+
+    <!--配置退出springsecurity和cas统一退出登录过滤器-->
+    <bean id="logoutFilter" class="org.springframework.security.web.authentication.logout.LogoutFilter">
+        <!--配置退出登录要触发的cas server 地址-->
+        <constructor-arg value="http://192.168.188.128/cas/logout?service=http://www.baidu.com"/>
+        <!--配置退出springsecurity-->
+        <constructor-arg>
+            <bean class="org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler"/>
+        </constructor-arg>
+        <property name="filterProcessesUrl" value="/logout/cas"/>
+    </bean>
+
+
+</beans>
